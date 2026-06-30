@@ -198,7 +198,7 @@ def status():
 
 
 # ============================================================
-# ingest / ask — 核心命令
+# ingest / add / ask — 核心命令
 # ============================================================
 
 @app.command()
@@ -352,6 +352,121 @@ def convert(
         console.print(f"  输出:     {result.output_path}")
         console.print(f"  大小:     {result.size_kb} KB")
         console.print(f"\n[dim]下一步: research ingest --dir {result.output_path.parent.resolve()}[/dim]")
+
+
+# ============================================================
+# add — 一键导入（自动识别 → 转换 → 摄取）
+# ============================================================
+
+@app.command()
+def add(
+    path: str = typer.Argument(..., help="要导入的文件或目录路径"),
+):
+    """
+    一键导入：自动识别格式 → 转换 → 摄取到向量库。
+
+    智能处理：
+        .epub / .pdf / .docx / .html → 自动转换为 .md 后摄取
+        .md / .txt / .markdown         → 直接摄取
+        目录                            → 扫描后全部处理
+
+    示例：
+        research add book.epub
+        research add ./downloads/
+        research add 论文.pdf
+    """
+    import time
+    input_path = Path(path)
+
+    if not input_path.exists():
+        console.print(f"[red][错误] 路径不存在: {path}[/red]")
+        raise typer.Exit(1)
+
+    config = cfg.load()
+    if not config.obsidian_path:
+        console.print("[red][错误] 请先运行 research init 设置 Obsidian 路径[/red]")
+        raise typer.Exit(1)
+
+    books_dir = Path(config.obsidian_path) / config.books_dir
+    if not books_dir.is_absolute():
+        books_dir = Path(config.obsidian_path) / books_dir
+    books_dir.mkdir(parents=True, exist_ok=True)
+
+    start_time = time.time()
+    new_md_files: list[Path] = []
+
+    # ---- 收集待处理文件 ----
+    to_process: list[Path] = []
+    if input_path.is_dir():
+        for ext in SUPPORTED_FORMATS:
+            to_process.extend(input_path.rglob(f"*{ext}"))
+        # 也收集已有的 md/txt
+        for ext in ("*.md", "*.txt", "*.markdown"):
+            to_process.extend(input_path.rglob(ext))
+    else:
+        to_process = [input_path]
+
+    console.print(f"\n[bold cyan][一键导入] 找到 {len(to_process)} 个文件[/bold cyan]\n")
+
+    # ---- 逐文件处理 ----
+    for file_path in to_process:
+        if file_path.name.startswith("."):
+            continue
+
+        suffix = file_path.suffix.lower()
+
+        # 已是 md/txt → 直接拷贝到 books
+        if suffix in (".md", ".txt", ".markdown"):
+            dest = books_dir / file_path.name
+            if dest != file_path:
+                dest.write_bytes(file_path.read_bytes())
+            new_md_files.append(dest)
+            console.print(f"  [green]✓[/green] {file_path.name} [dim]→ 直接导入[/dim]")
+            continue
+
+        # 需转换的格式
+        if suffix in SUPPORTED_FORMATS:
+            console.print(f"  [cyan]→[/cyan] {file_path.name} [dim]正在转换 {SUPPORTED_FORMATS[suffix]}...[/dim]")
+            try:
+                result = convert_file(str(file_path), str(books_dir))
+                new_md_files.append(result.output_path)
+                console.print(f"  [green]✓[/green] {result.output_path.name} [dim]({result.pages_or_chapters}章, {result.size_kb}KB)[/dim]")
+            except Exception as e:
+                console.print(f"  [red]✗[/red] {file_path.name}: {e}")
+                continue
+
+    # ---- 摄取 ----
+    md_files_in_books = list(books_dir.glob("*.md")) + list(books_dir.glob("*.txt"))
+    if not md_files_in_books:
+        console.print("\n[yellow]没有可摄取的 .md 文件[/yellow]")
+        return
+
+    console.print(f"\n[bold cyan][摄取] 正在将 {len(md_files_in_books)} 个文件写入向量库...[/bold cyan]")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("[cyan]处理中...", total=None)
+
+        def on_progress(stage, current, total, message):
+            progress.update(task_id, description=f"[cyan]{message}")
+
+        try:
+            # 直接摄取整个 books 目录
+            result = run_ingest(config, str(books_dir), progress_callback=on_progress)
+        except Exception as e:
+            console.print(f"[red][错误] 摄取失败: {e}[/red]")
+            raise typer.Exit(1)
+
+    elapsed = time.time() - start_time
+
+    console.print(f"\n[green][完成] 一键导入成功！[/green]")
+    console.print(f"  文件数: {result['files']}")
+    console.print(f"  文本块: {result['chunks']}")
+    console.print(f"  耗时:   {result['duration_seconds']} 秒")
+    console.print(f"\n[dim]现在可以问了: research ask \"你的问题\"[/dim]")
 
 
 @app.command()

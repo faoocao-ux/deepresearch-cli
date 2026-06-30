@@ -83,7 +83,7 @@ def run_ingest(
 
     _report(progress_callback, "embed", 3, 4, f"向量化完成，维度={embedder.dimension()}")
 
-    # ---- Step 4: 写入 ChromaDB ----
+    # ---- Step 4: 分批写入 ChromaDB ----
     _report(progress_callback, "store", 3, 4, "正在写入向量库...")
 
     # ChromaDB 存储路径：绝对路径或相对于 obsidian_path
@@ -92,9 +92,18 @@ def run_ingest(
         chroma = Path(config.obsidian_path) / chroma
 
     store = VectorStore(str(chroma))
-    store.add(chunks, all_embeddings)
 
-    _report(progress_callback, "store", 4, 4, f"已写入 {len(chunks)} 条向量")
+    # 分批写入，避免一次性写入过多导致索引构建失败
+    WRITE_BATCH = 200
+    total_written = 0
+    for i in range(0, len(chunks), WRITE_BATCH):
+        batch_chunks = chunks[i:i + WRITE_BATCH]
+        batch_embeddings = all_embeddings[i:i + WRITE_BATCH]
+        store.add(batch_chunks, batch_embeddings)
+        total_written += len(batch_chunks)
+        _report(progress_callback, "store", 3, 4, f"正在写入向量库... ({total_written}/{len(chunks)})")
+
+    _report(progress_callback, "store", 4, 4, f"已写入 {total_written} 条向量")
 
     elapsed = time.time() - start_time
     return {

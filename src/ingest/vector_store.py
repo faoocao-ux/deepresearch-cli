@@ -36,8 +36,7 @@ class VectorStore:
         Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=self.persist_dir)
         self._collection = self._client.get_or_create_collection(
-            name="research_docs",
-            metadata={"hnsw:space": "cosine"},  # 余弦相似度
+            name="research_docs_v2",
         )
 
     # ---- 写入 ----
