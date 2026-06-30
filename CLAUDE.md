@@ -22,6 +22,8 @@ src/
     ├── llm.py            #   LLM 接口（Anthropic/OpenAI/Ollama）
     ├── retriever.py      #   向量检索器
     └── rag.py            #   RAG 推理管道
+└── tools/                # 辅助工具模块
+    └── doc_converter.py  #   多格式文档转换器（PDF/EPUB/DOCX/HTML → .md）
 ```
 
 ## 关键命令
@@ -30,7 +32,7 @@ src/
 - `research config show/set` — 查看/修改配置
 - `research ingest` — 摄取文档到向量库
 - `research ask "问题"` — RAG 问答
-- `research status` — 查看向量库状态
+- `research convert` — 文档格式转换（PDF/EPUB/DOCX/HTML → .md）
 
 ## 技术栈
 

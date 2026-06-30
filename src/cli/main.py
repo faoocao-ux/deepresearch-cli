@@ -4,6 +4,7 @@ CLI 入口 —— 研究工具命令行接口
 命令一览：
     research init      初始化项目配置
     research config    查看/修改配置
+    research convert   文档格式转换（PDF/EPUB/DOCX/HTML → .md）
     research ingest    摄取文档到向量库
     research ask       向知识库提问
     research status    查看索引进度
@@ -20,6 +21,7 @@ from rich.table import Table
 from src.config.manager import ConfigManager
 from src.ingest.pipeline import run_ingest
 from src.query.rag import RAGPipeline
+from src.tools.doc_converter import convert_file, convert_directory, SUPPORTED_FORMATS
 
 # 创建 Typer 应用和 Rich 控制台
 app = typer.Typer(
@@ -247,6 +249,109 @@ def ingest(
     console.print(f"  文本块:   {result['chunks']}")
     console.print(f"  耗时:     {result['duration_seconds']} 秒")
     console.print(f"\n[dim]现在可以用 research ask \"你的问题\" 来提问了[/dim]")
+
+
+# ============================================================
+# convert — 文档格式转换
+# ============================================================
+
+@app.command()
+def convert(
+    path: str = typer.Argument(..., help="输入文件或目录路径"),
+    output_dir: Optional[str] = typer.Option(
+        None,
+        "--output", "-o",
+        help="输出目录（默认与源文件同目录）",
+    ),
+):
+    """
+    将文档转换为 Markdown 格式，支持 PDF / EPUB / DOCX / HTML。
+
+    示例：
+        research convert book.pdf
+        research convert book.epub -o ./books
+        research convert ./downloads -o ./books    # 批量转换整个目录
+    """
+    import os
+    input_path = Path(path)
+
+    if not input_path.exists():
+        console.print(f"[red][错误] 路径不存在: {path}[/red]")
+        raise typer.Exit(1)
+
+    if input_path.is_dir():
+        # 批量转换目录
+        console.print(f"\n[bold cyan][转换] 批量转换目录: {input_path}[/bold cyan]")
+        console.print(f"[dim]支持格式: {', '.join(SUPPORTED_FORMATS.values())}[/dim]\n")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("[cyan]扫描中...", total=None)
+            try:
+                results = convert_directory(str(input_path), output_dir)
+            except Exception as e:
+                console.print(f"[red][错误] 转换失败: {e}[/red]")
+                raise typer.Exit(1)
+
+        if not results:
+            console.print("[yellow]未找到可转换的文件[/yellow]")
+            return
+
+        # 结果表格
+        table = Table(title="转换结果", show_header=True, border_style="dim")
+        table.add_column("输入文件", style="cyan")
+        table.add_column("格式", style="white", width=8)
+        table.add_column("章节/段落", style="green", width=10)
+        table.add_column("输出文件", style="white")
+        table.add_column("大小", style="dim", width=8)
+
+        for r in results:
+            table.add_row(
+                r.input_path.name,
+                r.format,
+                str(r.pages_or_chapters),
+                r.output_path.name,
+                f"{r.size_kb} KB",
+            )
+
+        console.print()
+        console.print(table)
+        console.print(f"\n[green][成功] 共转换 {len(results)} 个文件[/green]")
+        console.print(f"[dim]输出目录: {output_dir or input_path}[/dim]")
+        console.print(f"[dim]下一步: research ingest --dir {Path(output_dir or str(input_path)).resolve()}[/dim]")
+
+    else:
+        # 单文件转换
+        suffix = input_path.suffix.lower()
+        if suffix not in SUPPORTED_FORMATS:
+            console.print(f"[red][错误] 不支持的格式: {suffix}[/red]")
+            console.print(f"[dim]支持: {', '.join(SUPPORTED_FORMATS.keys())}[/dim]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold cyan][转换] {input_path.name}[/bold cyan]")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task(f"[cyan]正在转换 {SUPPORTED_FORMATS[suffix]}...", total=None)
+            try:
+                result = convert_file(str(input_path), output_dir)
+            except Exception as e:
+                console.print(f"[red][错误] 转换失败: {e}[/red]")
+                raise typer.Exit(1)
+
+        console.print()
+        console.print(f"[green][成功] 转换完成！[/green]")
+        console.print(f"  格式:     {result.format}")
+        console.print(f"  章节/页:  {result.pages_or_chapters}")
+        console.print(f"  输出:     {result.output_path}")
+        console.print(f"  大小:     {result.size_kb} KB")
+        console.print(f"\n[dim]下一步: research ingest --dir {result.output_path.parent.resolve()}[/dim]")
 
 
 @app.command()
