@@ -1,0 +1,5 @@
+# 确保非 Python 文件被打包进 sdist
+include config_template.yaml
+include requirements.txt
+include README.md
+include PROJECT_PROGRESS.md

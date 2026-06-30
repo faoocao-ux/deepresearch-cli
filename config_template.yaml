@@ -1,0 +1,56 @@
+# ============================================================
+# 研究工具 CLI — 配置文件模板
+# 运行 `research init` 自动生成到 ~/.deepresearch/config.yaml
+# ============================================================
+
+# Obsidian 知识库根目录（必填）
+obsidian_path: "G:/MyObsidianVault"
+
+# 书籍文件存放目录（相对于 obsidian_path）
+books_dir: "./books"
+
+# ChromaDB 向量数据库存储目录
+chroma_dir: "./chroma_db"
+
+# ---- 嵌入模型配置 ----
+embedding:
+  # 提供商：local / openai / ollama
+  provider: local
+  # 模型名称
+  #   本地推荐: BAAI/bge-small-zh-v1.5 (512维, 中文友好)
+  #   OpenAI: text-embedding-3-small (1536维)
+  #   Ollama: nomic-embed-text (768维)
+  model: "BAAI/bge-small-zh-v1.5"
+  # API 密钥（仅云端模型需要）
+  api_key: null
+  # 自定义端点（Ollama: http://localhost:11434）
+  base_url: null
+  # 向量维度（需与模型匹配）
+  dimension: 512
+
+# ---- 大语言模型配置 ----
+llm:
+  # 提供商：anthropic / openai / ollama
+  provider: anthropic
+  # 模型名称
+  model: "claude-sonnet-4-6"
+  # API 密钥
+  api_key: null
+  # 自定义端点
+  base_url: null
+  # 最大输出 token 数
+  max_tokens: 4096
+  # 生成温度
+  temperature: 0.3
+
+# ---- 文档分块配置 ----
+chunk:
+  # 每个文本块大小（字符数）
+  chunk_size: 500
+  # 相邻块重叠字符数
+  chunk_overlap: 50
+  # 分块分隔符（优先级从高到低）
+  separators: ["\n\n", "\n", "。", "！", "？", "；", " ", ""]
+
+# 检索时返回的最相关段落数
+top_k: 5
